@@ -187,7 +187,7 @@ idx = (tblCvOd.odAnaeroPValue<0.05 | tblCvOd.odAeroPValue<0.05)& tblCvOd.log2fcC
 figure(5)
 barh(tblCvOd.log2fcCvAnaero(idx)/log(2))
 grid on
-set(gca, 'YTick', 1:sum(idx), 'YTickLabel', tblCvChange.Chemical(idx), 'TickLabelInterpreter', 'none')
+set(gca, 'YTick', 1:sum(idx), 'YTickLabel', tblCvOd.Chemical(idx), 'TickLabelInterpreter', 'none')
 xlabel('log_2(FC) of biofilm in anaerobic vs aerobic');
 title({'Impact of anaerobiosis on biofilm formation'...
     'for nutrients with evindence they can be utilized'});
