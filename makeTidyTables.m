@@ -1,21 +1,6 @@
 % load the xlsx file
-tblXls = readtable('biolog_data/pabiolog_master.xlsx');
+tblXls = readtable('biolog_data/pabiolog_master_update.xlsx');
 
-
-%% plot the joint distribution of CVs and ODs
-tblXls.negativeControl = strcmp(tblXls.Chemical, 'NegativeControl');
-figure(1)
-subplot(2, 1, 1)
-s = scatterhistogram(tblXls,'Odb_an','CV_an', ...
-    'GroupVariable','negativeControl', 'HistogramDisplayStyle','smooth', ...
-    'LineStyle','-', 'XLimits',[0.05 1.1], 'YLimits',[0.35 2.4]);
-title('Anaerobic')
-
-subplot(2, 1, 2)
-s = scatterhistogram(tblXls,'Odb_a','CV_a', ...
-    'GroupVariable','negativeControl', 'HistogramDisplayStyle','smooth', ...
-    'LineStyle','-', 'XLimits',[0.05 1.1], 'YLimits',[0.35 2.4]);
-title('Aerobic')
 
 %% create Nutrient/Class table
 tblNutrientClass = tblXls(:, {'Chemical' 'SeriesMoA'});
@@ -24,11 +9,8 @@ tblNutrientClass = unique(tblNutrientClass, 'rows');
 writetable(tblNutrientClass, 'tidy_tables/tblNutrientClass.csv', 'Delimiter',',');
 
 %% display a ranked list of nutrient classes
-sortrows(groupcounts(tblNutrientClass, 'SeriesMoA'), 'GroupCount', 'descend')
-
-
-tblResponses = tblXls(:, {'Chemical', 'CV_a', 'Odb_a', 'CV_an', 'Odb_an'});
-tblResponses = stack(tblResponses, 2:5, 'NewDataVariableName','value', 'IndexVariableName','type_aero');
+tblResponses = tblXls(:, {'Chemical', 'replicate', 'Plate', 'CV_a', 'Odb_a', 'CV_an', 'Odb_an'});
+tblResponses = stack(tblResponses, 4:7, 'NewDataVariableName','value', 'IndexVariableName','type_aero');
 % split the type_aero into type and aero
 for i = 1:height(tblResponses)
     straux = strsplit(string(tblResponses.type_aero(i)), '_');
@@ -39,149 +21,102 @@ end
 tblResponses.aero = strcmp(tblResponses.aero, 'a');
 tblResponses.type_aero = [];
 
-%% plot the distribution of CV values
-idx = strcmp(tblResponses.Chemical, 'NegativeControl');
-figure(2)
-subplot(2, 1, 1)
-histogram(tblResponses.value(strcmp(tblResponses.type, 'CV') & ~idx, :));
-hold on
-histogram(tblResponses.value(strcmp(tblResponses.type, 'CV') & idx, :));
-hold off
-xlabel('CV')
-ylabel('all data')
-
-subplot(2, 1, 2)
-histogram(tblResponses.value(strcmp(tblResponses.type, 'Odb') & ~idx, :));
-hold on
-histogram(tblResponses.value(strcmp(tblResponses.type, 'Odb') & idx, :));
-hold off
-xlabel('OD')
-ylabel('all data')
-
 %% Compute the CV and OD values corrected for negative control
 idxAero = tblResponses.aero;
+
+% AEROBIC
 tblCV = tblResponses(strcmp(tblResponses.type, 'CV') & idxAero, :);
 tblOD = tblResponses(strcmp(tblResponses.type, 'Odb') & idxAero, :);
 
-mdlCv = fitlm(tblCV, 'value ~ Chemical');
-mdlOD = fitlm(tblOD, 'value ~ Chemical');
-
-
-tblCvAero = mdlCv.Coefficients;
-tblCvAero.SE = []; tblCvAero.tStat = [];
-tblCvAero.Properties.VariableNames = {'CVAero' 'cvAeroPValue'};
-tblCvAero.Chemical = tblCvAero.Properties.RowNames;
-
-tblOdAero = mdlOD.Coefficients;
-tblOdAero.SE = []; tblOdAero.tStat = [];
-tblOdAero.Properties.VariableNames = {'ODAero' 'odAeroPValue'};
-tblOdAero.Chemical = tblOdAero.Properties.RowNames;
-
+% OD aerobic
+mdlOD = fitlme(tblOD, 'value ~ Chemical + (1|Plate:replicate)');
+tblOdAero = dataset2table(mdlCv.Coefficients);
+tblOdAero = tblOdAero(:, {'Name' 'Estimate' 'pValue'});
+tblOdAero.Properties.VariableNames = {'Chemical' 'ODAero' 'odAeroPValue'};
+% CV aerobic
+mdlCv = fitlme(tblCV, 'value ~ Chemical + (1|Plate:replicate)');
+tblCvAero = dataset2table(mdlCv.Coefficients);
+tblCvAero = tblCvAero(:, {'Name' 'Estimate' 'pValue'});
+tblCvAero.Properties.VariableNames = {'Chemical' 'CVAero' 'cvAeroPValue'};
+% remove the row corresponding to the intercept
 tblCvOdAero = innerjoin(tblCvAero, tblOdAero);
 tblCvOdAero(1, :) = [];
 
-
+% ANEROBIC
 tblCV = tblResponses(strcmp(tblResponses.type, 'CV') & ~idxAero, :);
 tblOD = tblResponses(strcmp(tblResponses.type, 'Odb') & ~idxAero, :);
 
-mdlCv = fitlm(tblCV, 'value ~ Chemical');
-mdlOD = fitlm(tblOD, 'value ~ Chemical');
-
-
-tblCvAnaero = mdlCv.Coefficients;
-tblCvAnaero.SE = []; tblCvAnaero.tStat = [];
-tblCvAnaero.Properties.VariableNames = {'CVAnaero' 'cvAnaeroPValue'};
-tblCvAnaero.Chemical = tblCvAnaero.Properties.RowNames;
-
-tblOdAnaero = mdlOD.Coefficients;
-tblOdAnaero.SE = []; tblOdAnaero.tStat = [];
-tblOdAnaero.Properties.VariableNames = {'ODAnaero' 'odAnaeroPValue'};
-tblOdAnaero.Chemical = tblOdAnaero.Properties.RowNames;
-
+% OD anaerobic
+mdlOD = fitlme(tblOD, 'value ~ Chemical + (1|Plate:replicate)');
+tblOdAnaero = dataset2table(mdlCv.Coefficients);
+tblOdAnaero = tblOdAnaero(:, {'Name' 'Estimate' 'pValue'});
+tblOdAnaero.Properties.VariableNames = {'Chemical' 'ODAnaero' 'odAnaeroPValue'};
+% CV anaerobic
+mdlCv = fitlme(tblCV, 'value ~ Chemical + (1|Plate:replicate)');
+tblCvAnaero = dataset2table(mdlCv.Coefficients);
+tblCvAnaero = tblCvAnaero(:, {'Name' 'Estimate' 'pValue'});
+tblCvAnaero.Properties.VariableNames = {'Chemical' 'CVAnaero' 'cvAnaeroPValue'};
+% remove the row corresponding to the intercept
 tblCvOdAnaero = innerjoin(tblCvAnaero, tblOdAnaero);
 tblCvOdAnaero(1, :) = [];
+
+% compile aerobic and anaerobic data
 tblCvOd = innerjoin(tblCvOdAero, tblCvOdAnaero);
 
-%% change the order of columns so Chemical comes first
-tblCvOd = tblCvOd(:, [3 1:2 4:end])
+%% remove 'Chemical_' from the chemical name
 tblCvOd.Chemical = strrep(tblCvOd.Chemical, 'Chemical_', '');
 
-%% plot the joint distribution of corrected averaged CVs and ODs
-
-figure(3)
-subplot(2, 1, 1)
-s = scatterhistogram(tblCvOd,'ODAnaero','CVAnaero', ...
-    'HistogramDisplayStyle','smooth', ...
-    'LineStyle','-', 'XLimits',[-0.1 0.8], 'YLimits',[-0.4 1.5]);
-title('Anaerobic')
-
-subplot(2, 1, 2)
-s = scatterhistogram(tblCvOd,'ODAero','CVAero', ...
-    'HistogramDisplayStyle','smooth', ...
-    'LineStyle','-', 'XLimits',[-0.1 0.8], 'YLimits',[-0.4 1.5]);
-title('Aerobic')
-
-%% color by pvalue
-figure(4)
-subplot(2, 2, 1)
-gscatter(tblCvOd.ODAnaero, tblCvOd.CVAnaero, tblCvOd.odAnaeroPValue<0.05)
-xlabel('ODAnaero')
-ylabel('CVAnaero')
-grid on
-legend('n.s.', 'P<0.05')
-title('P-value for OD')
-
-subplot(2, 2, 2)
-gscatter(tblCvOd.ODAnaero, tblCvOd.CVAnaero, tblCvOd.cvAnaeroPValue<0.05)
-xlabel('ODAnaero')
-ylabel('CVAnaero')
-grid on
-legend('n.s.', 'P<0.05')
-title('P-value for CV')
-
-subplot(2, 2, 3)
-gscatter(tblCvOd.ODAero, tblCvOd.CVAero, tblCvOd.odAeroPValue<0.05)
-xlabel('ODAero')
-ylabel('CVAero')
-grid on
-legend('n.s.', 'P<0.05')
-title('P-value for OD')
-
-subplot(2, 2, 4)
-gscatter(tblCvOd.ODAero, tblCvOd.CVAero, tblCvOd.cvAeroPValue<0.05)
-xlabel('ODAero')
-ylabel('CVAero')
-grid on
-legend('n.s.', 'P<0.05')
-
-%% fitlm to determine the change in biofilm formation when switching to anaerobic
+%% fcreate auxiliary variables to determine fold changes
 tblResponses.logValue = log(tblResponses.value);
 tblResponses.type = string(tblResponses.type);
 tblResponses.anaero = ~(tblResponses.aero);
-%tblResponses.type = categorical(tblResponses.type);
-%tblResponses.type = setcats(tblResponses.type, {'Odb' 'CV'})
-mdlScaled = fitlm(tblResponses, 'logValue ~ anaero*Chemical',...
+
+%% fitlm to determine the change in biofilm formation when switching to anaerobic
+mdlCvFc = fitlme(tblResponses, 'logValue ~ anaero*Chemical + (1|Plate:replicate)',...
     'Exclude',~strcmp(tblResponses.type, 'CV'));
 
-%% plot the nutrients that induce biggest change in CV
-tblCvChange = mdlScaled.Coefficients;
-% keep only the rows reporting CV changes in anaerobic
-idx = contains(tblCvChange.Properties.RowNames, ':anaero_1');
-tblCvChange(~idx, :) = [];
-tblCvChange.Chemical = strrep(tblCvChange.Properties.RowNames, 'Chemical_', '');
-tblCvChange.Chemical = strrep(tblCvChange.Chemical, ':anaero_1', '');
+% Keep only the fold changes in anaerobic
+tblCvFoldChange = dataset2table(mdlCvFc.Coefficients);
+% convert from natural base to log2FC
+tblCvFoldChange.Estimate = tblCvFoldChange.Estimate / log(2);
+% clean up column names
+tblCvFoldChange.Properties.VariableNames{1} = 'Chemical';
+idx = contains(tblCvFoldChange.Chemical, ':anaero_1');
+tblCvFoldChange(~idx, :) = [];
+tblCvFoldChange.Chemical = strrep(tblCvFoldChange.Chemical, 'Chemical_', '');
+tblCvFoldChange.Chemical = strrep(tblCvFoldChange.Chemical, ':anaero_1', '');
 
-%% add these values to the tblCvOd 
-tblCvChange = tblCvChange(:, {'Chemical' 'Estimate' 'pValue'});
-tblCvChange.Properties.VariableNames = {'Chemical' 'log2fcCvAnaero' 'log2fcCvAnaeroPValue'};
-tblCvOd = innerjoin(tblCvOd, tblCvChange)
-tblCvOd = sortrows(tblCvOd, 'log2fcCvAnaero');
+% add these values to the tblCvOd 
+tblCvFoldChange = tblCvFoldChange(:, {'Chemical' 'Estimate' 'pValue'});
+tblCvFoldChange.Properties.VariableNames = {'Chemical' 'log2fcCvAnaero' 'log2fcCvAnaeroPValue'};
+tblCvOd = innerjoin(tblCvOd, tblCvFoldChange);
 
-%% keep only the ones there is evidence they can utilize the nutrient
-% bar plot of the change in biofilm formation when switching from aerobic
-% to anaerobic conditions
-% but only for nutrients where there is evidence they can be utilized for
-% growth above engative control, either aerobically or anaerobically.
+
+%% fitlm to determine the change in OD when switching to anaerobic
+mdlOdFc = fitlme(tblResponses, 'logValue ~ anaero*Chemical + (1|Plate:replicate)',...
+    'Exclude', strcmp(tblResponses.type, 'CV'));
+
+% Keep only the fold changes in anaerobic
+tblOdFoldChange = dataset2table(mdlOdFc.Coefficients);
+% convert from natural base to log2FC
+tblOdFoldChange.Estimate = tblOdFoldChange.Estimate / log(2);
+% clean up column names
+tblOdFoldChange.Properties.VariableNames{1} = 'Chemical';
+idx = contains(tblOdFoldChange.Chemical, ':anaero_1');
+tblOdFoldChange(~idx, :) = [];
+tblOdFoldChange.Chemical = strrep(tblOdFoldChange.Chemical, 'Chemical_', '');
+tblOdFoldChange.Chemical = strrep(tblOdFoldChange.Chemical, ':anaero_1', '');
+
+% add these values to the tblCvOd 
+tblOdFoldChange = tblOdFoldChange(:, {'Chemical' 'Estimate' 'pValue'});
+tblOdFoldChange.Properties.VariableNames = {'Chemical' 'log2fcOdAnaero' 'log2fcOdAnaeroPValue'};
+tblCvOd = innerjoin(tblCvOd, tblOdFoldChange);
+
+%% save the table
+writetable(tblCvOd, 'tidy_tables/tblCvOd.csv', 'Delimiter',',');
+
+%%
+tblCvOd = sortrows(tblCvOd, 'log2fcCvAnaero')
 idx = (tblCvOd.odAnaeroPValue<0.05 | tblCvOd.odAeroPValue<0.05)& tblCvOd.log2fcCvAnaeroPValue < 0.05;
 
 figure(5)
@@ -190,9 +125,5 @@ grid on
 set(gca, 'YTick', 1:sum(idx), 'YTickLabel', tblCvOd.Chemical(idx), 'TickLabelInterpreter', 'none')
 xlabel('log_2(FC) of biofilm in anaerobic vs aerobic');
 title({'Impact of anaerobiosis on biofilm formation'...
-    'for nutrients with evindence they can be utilized'});
-
-%% save the table
-writetable(tblCvOd, 'tidy_tables/tblCvOd.csv', 'Delimiter',',');
-
+    'for nutrients with evidence they can be utilized'});
 
