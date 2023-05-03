@@ -30,7 +30,7 @@ tblOD = tblResponses(strcmp(tblResponses.type, 'Odb') & idxAero, :);
 
 % OD aerobic
 mdlOD = fitlme(tblOD, 'value ~ Chemical + (1|Plate:replicate)');
-tblOdAero = dataset2table(mdlCv.Coefficients);
+tblOdAero = dataset2table(mdlOD.Coefficients);
 tblOdAero = tblOdAero(:, {'Name' 'Estimate' 'pValue'});
 tblOdAero.Properties.VariableNames = {'Chemical' 'ODAero' 'odAeroPValue'};
 % CV aerobic
@@ -48,7 +48,7 @@ tblOD = tblResponses(strcmp(tblResponses.type, 'Odb') & ~idxAero, :);
 
 % OD anaerobic
 mdlOD = fitlme(tblOD, 'value ~ Chemical + (1|Plate:replicate)');
-tblOdAnaero = dataset2table(mdlCv.Coefficients);
+tblOdAnaero = dataset2table(mdlOD.Coefficients);
 tblOdAnaero = tblOdAnaero(:, {'Name' 'Estimate' 'pValue'});
 tblOdAnaero.Properties.VariableNames = {'Chemical' 'ODAnaero' 'odAnaeroPValue'};
 % CV anaerobic
